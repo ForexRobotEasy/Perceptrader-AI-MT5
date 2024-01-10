@@ -1,0 +1,111 @@
+
+// Program: Perceptrader AI MT5
+// Developer's site: forexroboteasy.com
+// Development: Forex Robot Easy Team
+
+// Include necessary libraries
+#include <Trade\Trade.mqh>
+#include <Math\Math.mqh>
+#include <Arrays\ArrayObj.mqh>
+#include <ANN\ANN.mqh>
+
+// Define currency pairs
+string currencyPairs[] = {'NZDUSD', 'USDCAD', 'AUDNZD', 'AUDCAD', 'NZDCAD', 'GBPCHF'};
+
+// Define grid trading parameters
+double gridStep = 10; // Grid step size
+double maxGridLevel = 5; // Maximum grid level
+double gridLotSize = 0.01; // Lot size for each grid level
+
+// Define neural network parameters
+int inputNeurons = 3; // Number of input neurons (OHLC)
+int hiddenNeurons = 10; // Number of hidden neurons
+int outputNeurons = 1; // Number of output neurons
+double learningRate = 0.01; // Learning rate for training
+double momentum = 0.9; // Momentum for training
+
+// Initialize trading account and neural network
+CTrade trade;
+CNeuralNetwork neuralNetwork(inputNeurons, hiddenNeurons, outputNeurons, learningRate, momentum);
+
+// Define trading function
+void Trade()
+{
+    // Get current market data
+    double open = MarketInfo(_Symbol, MODE_OPEN);
+    double high = MarketInfo(_Symbol, MODE_HIGH);
+    double low = MarketInfo(_Symbol, MODE_LOW);
+    double close = MarketInfo(_Symbol, MODE_CLOSE);
+
+    // Normalize market data
+    double normalizedOpen = NormalizeValue(open);
+    double normalizedHigh = NormalizeValue(high);
+    double normalizedLow = NormalizeValue(low);
+    double normalizedClose = NormalizeValue(close);
+
+    // Create input data array
+    double inputData[] = {normalizedOpen, normalizedHigh, normalizedLow};
+
+    // Feed input data to neural network
+    neuralNetwork.FeedForward(inputData);
+
+    // Get predicted output from neural network
+    double predictedOutput = neuralNetwork.GetOutput();
+
+    // Make trading decision based on predicted output
+    if (predictedOutput > 0.5)
+    {
+        // Place buy order
+        trade.Buy(gridLotSize, _Symbol, 0, open, 0, 0);
+    }
+    else if (predictedOutput < -0.5)
+    {
+        // Place sell order
+        trade.Sell(gridLotSize, _Symbol, 0, open, 0, 0);
+    }
+}
+
+// Normalize value function
+double NormalizeValue(double value)
+{
+    return (value - low) / (high - low);
+}
+
+// Start program execution
+void OnStart()
+{
+    // Initialize trading account
+    trade.SetExpertMagicNumber(123456);
+    trade.SetExpertStopLoss(100);
+    trade.SetExpertTakeProfit(200);
+
+    // Train neural network using historical market data
+    for (int i = 0; i < currencyPairs.Length(); i++)
+    {
+        string currencyPair = currencyPairs[i];
+        CArrayObj historicalData;
+        int bars = CopyRates(currencyPair, PERIOD_H1, 0, 100, historicalData);
+        
+        for (int j = 0; j < bars - 1; j++)
+        {
+            double currentClose = NormalizeValue(historicalData[j].close);
+            double nextClose = NormalizeValue(historicalData[j + 1].close);
+            double targetOutput = nextClose - currentClose;
+
+            double inputData[] = {currentClose};
+            double targetData[] = {targetOutput};
+            
+            neuralNetwork.Train(inputData, targetData);
+        }
+    }
+
+    // Enable automated trading
+    trade.SetExpertMode(EXPERT_MODE_ENABLED);
+
+    // Start trading loop
+    while (!IsStopped())
+    {
+        Trade();
+        Sleep(1000);
+    }
+}
